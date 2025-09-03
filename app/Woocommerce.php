@@ -30,6 +30,9 @@ class Woocommerce {
 
 		add_action( 'woocommerce_get_checkout_url', array( $this, 'append_cart_in_checkout_url' ) );
 
+		// Add hook for thank you page URL modification to ensure domain consistency with WooCommerce 10.x
+		add_filter( 'woocommerce_get_checkout_order_received_url', array( $this, 'append_cart_in_thankyou_url' ), 10, 2 );
+
 		add_action( 'ts_product_update', array( $this, 'update_typesense_variation' ), 10, 2 );
 		add_action( 'wooless_variation_update', array( $this, 'variation_update' ), 10, 1 );
 
@@ -94,6 +97,42 @@ class Woocommerce {
 			$checkout_url = str_replace( 'https://', 'https://cart.', $checkout_url );
 		}
 		return $checkout_url;
+	}
+
+	/**
+	 * Modify order received (thank you page) URL to use cart subdomain
+	 * This ensures consistency with checkout URLs and prevents redirect issues in WooCommerce 10.x
+	 *
+	 * @param string $order_received_url The original order received URL
+	 * @param WC_Order $order The order object
+	 * @return string Modified URL with cart subdomain
+	 */
+	public function append_cart_in_thankyou_url( $order_received_url, $order ) {
+		try {
+			// Check if the BlazeCommerce system is enabled
+			$enable_system = boolval( bw_get_general_settings( 'enable_system' ) );
+
+			// Only modify URL if system is enabled and cart subdomain is not already present
+			if ( $enable_system && !empty( $order_received_url ) && strpos( $order_received_url, 'https://cart.' ) === false ) {
+				// Replace https:// with https://cart. to add cart subdomain
+				$modified_url = str_replace( 'https://', 'https://cart.', $order_received_url );
+
+				// Log the URL modification for debugging (optional)
+				if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+					error_log( 'BlazeCommerce: Modified thank you URL from ' . $order_received_url . ' to ' . $modified_url );
+				}
+
+				return $modified_url;
+			}
+
+			// Return original URL if no modification needed
+			return $order_received_url;
+
+		} catch ( Exception $e ) {
+			// Log error and return original URL as fallback
+			error_log( 'BlazeCommerce: Error modifying thank you URL - ' . $e->getMessage() );
+			return $order_received_url;
+		}
 	}
 
 	public function product_reordering( $product_id, $menu_orders ) {
